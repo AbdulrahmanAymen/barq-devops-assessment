@@ -197,6 +197,63 @@
   Record survived a full container removal and recreation (stop → rm → up), a stronger test than a simple restart, confirming true persistence via the named volume.
 - Related commit: `36df0cd`
 - Remaining uncertainty: The `postgres-data` volume from earlier broken runs was not explicitly pruned before this final retest, so seed IDs 1–3 in the evidence above include leftover data from prior manual testing rather than a completely fresh volume. The persistence mechanism itself is confirmed correct regardless.
+---
+
+---
+
+## Entry 8 — Task requirements violated: published DB/cache ports and NGINX on both networks
+
+- Symptom: No runtime error — the stack was fully healthy and all endpoints worked. The gap
+  was discovered by re-reading `assessment/TASK.md` in full after assuming the technical
+  fixes were complete, rather than from any failure or log output.
+- Hypothesis: The starter `docker-compose.yml` might not fully match the explicit Part 2
+  requirements in TASK.md, since earlier work had focused only on making the stack functional,
+  not on auditing it against every listed constraint.
+- Command or test:
+
+cat docker-compose.yml
+
+  compared line by line against TASK.md's explicit requirements:
+  - "Publish only NGINX on host port 8080. Do not publish app, PostgreSQL or Redis ports."
+  - "Connect NGINX + apps to frontend; apps + PostgreSQL + Redis to backend."
+  - "Set correct environment variables, health/readiness checks, restart policies and resource limits."
+- Actual output: Three violations found in the current `docker-compose.yml`:
+  1. `postgres` had `ports: ["127.0.0.1:15432:5432"]` — a published host port, not permitted.
+  2. `redis` had `ports: ["127.0.0.1:16379:6379"]` — a published host port, not permitted.
+  3. `nginx` was connected to `networks: [frontend, backend]` — TASK.md requires NGINX on
+     `frontend` only, since it should never reach PostgreSQL/Redis directly.
+  4. All services had `restart: "no"` (app anchor) or no restart policy at all (postgres, redis,
+     nginx) — TASK.md requires "correct... restart policies."
+- Failed attempt and what changed your thinking: None — this was found by direct comparison
+  of the config file against the written requirements, not by trial and error.
+- Root cause: The starter project's `docker-compose.yml` was functionally correct (all
+  endpoints worked, health checks passed) but did not fully comply with the task's explicit
+  network-isolation and port-publishing constraints. A working stack is not the same as a
+  compliant one — this was missed initially because attention was on making things run, not
+  on auditing every written constraint after the fact.
+- Fix:
+  - Removed the `ports:` mapping entirely from both `postgres` and `redis` services.
+  - Changed `nginx`'s `networks:` from `[frontend, backend]` to `[frontend]` only.
+  - Added `restart: unless-stopped` to the shared app anchor, `postgres`, `redis`, and `nginx`.
+  - Changed Redis's `--save ""` (persistence fully disabled) to `--save 60 1` (snapshot if at
+    least 1 key changed in 60 seconds), to satisfy "Configure Redis persistence where appropriate."
+- Retest evidence:
+
+docker compose -p barq-assessment down
+docker compose -p barq-assessment up -d --build
+docker port postgres # no output — port no longer published
+docker port redis # no output — port no longer published
+curl -v http://127.0.0.1:8080/ready
+
+HTTP/1.1 200 OK
+{"dependencies":{"postgres":"ready","redis":"ready"},"status":"ready",...}
+  All five containers remained healthy after the change, and public connectivity through
+  NGINX was unaffected, confirming the network/port changes did not break functionality
+  while bringing the stack into compliance with TASK.md.
+- Related commit: [4a00846]
+- Remaining uncertainty: Resource limits (CPU/memory) from TASK.md's Part 2 requirements are
+  still not set on any service; this is a known remaining gap tracked separately, not
+  something this fix addresses.
 
 ---
 
