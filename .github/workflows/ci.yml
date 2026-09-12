@@ -1,0 +1,40 @@
+name: BARQ Assessment CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up environment file
+        run: cp .env.example .env || true
+
+      - name: Build and start the stack
+        run: docker compose -p barq-assessment up -d --build
+
+      - name: Wait for services to stabilize
+        run: sleep 20
+
+      - name: Show container status
+        run: docker compose -p barq-assessment ps -a
+
+      - name: Run validation script
+        run: python3 validate.py
+
+      - name: Run failure/recovery test
+        run: python3 failure_test.py
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -p barq-assessment logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose -p barq-assessment down -v
