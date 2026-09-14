@@ -64,6 +64,12 @@ services:
     depends_on: [app-01, app-02]
     networks: [frontend]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget" , "-q", "-O", "/dev/null", "http://127.0.0.1/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 3s
 networks:
   frontend:
   backend:
