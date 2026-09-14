@@ -148,7 +148,7 @@ def check_counter(base_url, timeout):
 
 def main():
     parser = argparse.ArgumentParser(description="Validate the running BARQ assessment stack.")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8080")
+    parser.add_argument("--base-url", default="http://127.0.0.1:8090")
     parser.add_argument("--timeout", type=float, default=3.0)
     args = parser.parse_args()
 
